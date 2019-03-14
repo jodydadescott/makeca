@@ -8,6 +8,7 @@ main() {
 	[ -d $store ] && { err "Directory $store already exist; aborting"; return 2; }
 	[ -f $store ] && { err "File $store already exist; aborting"; return 2; }
 	mkdir -p $store || return 3
+	cd $store || return 3
 	touch ca || return 3
 	gen_ca_cnf > ca.cnf || return 3
 	gen_bin_signcert > signcert || return 3
