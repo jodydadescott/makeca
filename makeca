@@ -222,8 +222,9 @@ main() {
   local dname=\$2
   local pass=\$3
   local output_dir=\$4
-  cd \$(dirname \$0)
+  pushd \$(dirname \$0) > /dev/null 2>&2
   ca=\$PWD
+  popd > /dev/null 2>&1
   local usage="Usage \$0 name dname pass output_dir"
   [[ \$name ]] || { err \$usage; return 2; }
   [[ \$dname ]] || { err \$usage; return 2; }
@@ -236,7 +237,7 @@ main() {
   [ -d \$name ] && { err "Directory with name \$name already exist"; return 2; }
 
   mkdir \$name && cd \$name
-  log=$(mktemp)
+  log=\$(mktemp)
   _keytool \$ca \$name \$dname \$pass > \$log 2>&1
   rc=\$?
   [ \$rc -eq 0 ] || { cat \$log; }
