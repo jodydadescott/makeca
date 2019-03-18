@@ -255,7 +255,7 @@ _keytool() {
   keytool -certreq -noprompt -storepass \$pass -keystore keystore -alias \$name -file \${ca}/sign_request/\${name}.csr && \${ca}/signcert || return 2
   keytool -exportcert        -storepass \$pass -keystore keystore -alias \$name -file key || return 2
   cp \${ca}/certs/\${name}.crt cert || return 2
-  keytool -import  -noprompt -storepass \$pass -keystore keystore -alias $\name -trustcacerts -file cert || return 2
+  keytool -import  -noprompt -storepass \$pass -keystore keystore -alias \$name -trustcacerts -file cert || return 2
 }
 
 err() { echo "\$@" 1>&2; }
