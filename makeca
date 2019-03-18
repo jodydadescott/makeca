@@ -3,20 +3,22 @@
 EMAIL="$(whoami)@local.dev"
 
 main() {
+	usage="Usage:$0 store_dir dname"
 	store=$1
-	[[ $store ]] || { err "Usage:$0 store_dir"; return 2; }
+	dname=$2
+	[[ $store ]] || { err $usage; return 2; }
+	[[ $dname ]] || { err $usage; return 2; }
 	[ -d $store ] && { err "Directory $store already exist; aborting"; return 2; }
 	[ -f $store ] && { err "File $store already exist; aborting"; return 2; }
+	_parse_dname $dname
+	DIR_CN="root"
 	mkdir -p $store || return 3
 	cd $store || return 3
 	touch ca || return 3
-	gen_ca_cnf > ca.cnf || return 3
-	gen_bin_signcert > signcert || return 3
-	gen_bin_make_plaincert > make_plaincert || return 3
-	gen_bin_make_keytool > make_keytool || return 3
-	chmod +x signcert || return 3
-	chmod +x make_plaincert || return 3
-	chmod +x make_keytool || return 3
+	echo_ca_cnf > ca.cnf || return 3
+	echo_signcert > signcert || return 3
+	echo_makecert > makecert || return 3
+	chmod +x signcert makecert || return 3
 	mkdir -p certs sign_request newcerts || return 3
 	openssl rand -base64 32 > passphrase || return 3
 	chmod 0400 passphrase || return 3
@@ -32,7 +34,19 @@ main() {
 	err "Store $store created"
 }
 
-gen_ca_cnf() {
+_parse_dname() {
+	for i in ${1//,/ }; do
+		key=$(echo $i | cut -d'=' -f1)
+		value=$(echo $i | cut -d'=' -f2)
+		[[ "$key" == "CN" ]] && DIR_CN=$value
+		[[ "$key" == "OU" ]] && DIR_OU=$value
+		[[ "$key" == "O" ]] && DIR_O=$value
+		[[ "$key" == "ST" ]] && DIR_ST=$value
+		[[ "$key" == "C" ]] && DIR_C=$value
+	done
+}
+
+echo_ca_cnf() {
 	cat <<-EOF
 	HOME			= .
 	RANDFILE		= \$ENV::HOME/.rnd
@@ -95,22 +109,22 @@ gen_ca_cnf() {
 
 	[ req_distinguished_name ]
 	countryName			= Country Name (2 letter code)
-	countryName_default		= US
+	countryName_default		= $DIR_C
 	countryName_min			= 2
 	countryName_max			= 2
 
 	stateOrProvinceName		= State or Province Name (full name)
-	stateOrProvinceName_default	= TX
+	stateOrProvinceName_default	= $DIR_ST
 
 	0.organizationName		= Organization Name (eg, company)
-	0.organizationName_default	= TechBros
+	0.organizationName_default	= $DIR_O
 
 	organizationalUnitName		= Organizational Unit Name (eg, section)
-	organizationalUnitName_default	= Widgets
+	organizationalUnitName_default	= $DIR_OU
 
 	commonName			= Common Name (e.g. server FQDN or YOUR name)
 	commonName_max			= 64
-	commonName_default = root
+	commonName_default = $DIR_CN
 
 	emailAddress			= Email Address
 	emailAddress_max		= 64
@@ -155,7 +169,7 @@ gen_ca_cnf() {
 	EOF
 }
 
-gen_bin_signcert() {
+echo_signcert() {
 	cat <<-'EOF'
 	#!/bin/sh
 	# openssl req -in jody.req -noout -text
@@ -184,82 +198,51 @@ gen_bin_signcert() {
 	EOF
 }
 
-gen_bin_make_plaincert(){
+echo_makecert(){
 cat <<EOF
-#!/bin/sh
+#!/bin/bash
 
 main() {
-  ca=\$(dirname \$0)
-  cert_name=\$(basename \$1)
-  cert_dir=\$(dirname \$1)/\${cert_name}
-
-  [[ \$cert_name ]] || { err "Usage: \$0 cert_name"; return 2; }
-  [ -d \$cert_dir ] && { err "Directory \$cert exist"; return 2; }
-  [ -f \$cert_dir ] && { err "File \$cert exist"; return 2; }
-  mkdir -p \$cert_dir
-
-  local reqout=\${ca}/sign_request/\${cert_name}.req
-  openssl genrsa -out \${cert_dir}/key.pem 2048
-  local subject="/C=US/ST=TX/L=Southlake/O=TechBros/OU=Widgets/CN=$EMAIL"
-  openssl req -nodes -newkey rsa:2048 -keyout key.pem -out \$reqout -subj \$subject
-  \${ca}/signcert
-  cp \${ca}/certs/\${cert_name}.crt \${cert_dir}/key.crt
-  cp \${ca}/ca.crt \${cert_dir}/ca.crt
+	which openssl > /dev/null 2>&1 || { err "Unable to find openssl in path"; return 2; }
+	local name=\$1
+	local dname=\$2
+	local pass=\$3
+	local output_dir=\$4
+	pushd \$(dirname \$0) > /dev/null 2>&2
+	ca=\$PWD
+	popd > /dev/null 2>&1
+	local usage="Usage \$0 name dname pass output_dir"
+	[[ \$name ]] || { err \$usage; return 2; }
+	[[ \$dname ]] || { err \$usage; return 2; }
+	[[ \$pass ]] || { err \$usage; return 2; }
+	[[ \$output_dir ]] || { err \$usage; return 2; }
+	[ -d \$output_dir ] || mkdir -p \$output_dir
+	cd \$output_dir
+	[ -f \${ca}/certs/\${name}.crt ] && { err "Cert with name \$name already exist"; return 2; }
+	[ -d \$name ] && { err "Directory with name \$name already exist"; return 2; }
+	mkdir \$name || { err "Unable to create directory \$name"; return 2; }
+	cd \$name 
+	cp \${ca}/ca.crt . || { err "Unable to copy file \${ca}/ca.crt"; return 2; }
+	openssl genrsa -out key 2048 || { err "Unable to generate key"; return 2; }
+	local subject="/CN=\${name}/\${dname}"
+	openssl req -new -key key -out csr -subj \$subject -passin pass:\${pass} ||
+		{ err "Unable to create request"; return 2; }
+	mv csr \${ca}/sign_request/\${name}.csr ||
+		{ err "Unable to move csr to \${ca}/sign_request"; return 2; }
+	\${ca}/signcert || { err "Unable so sign request"; return 2; }
+	cp \${ca}/certs/\${name}.crt crt ||
+		{ err "Unable to copy file \${ca}/certs/\${name}.crt"; return 2; }
+	openssl pkcs12 -export -in crt -inkey key -name \${name} -out p12 -passout pass:\${pass}
+	which keytool > /dev/null 2>&1 || { err "keytool not found, keystore will not be created"; return 0; }
+	keytool -import  -noprompt -storepass \$pass -keystore keystore -alias root -trustcacerts -file ca.crt ||
+		{ err "keystore creation/importation of ca.crt failed"; return 2; }
+	keytool -importkeystore -deststorepass \$pass -destkeystore keystore -srckeystore p12 -srcstorepass \$pass -srcstoretype PKCS12 ||
+		{ err "keystore importation of pkcs12 failed"; return 2; }
 }
 
 err() { echo "\$@" 1>&2; }
 main \$@
-EOF
-}
 
-
-gen_bin_make_keytool(){
-cat <<EOF
-#!/bin/sh
-
-main() {
-  local name=\$1
-  local dname=\$2
-  local pass=\$3
-  local output_dir=\$4
-  pushd \$(dirname \$0) > /dev/null 2>&2
-  ca=\$PWD
-  popd > /dev/null 2>&1
-  local usage="Usage \$0 name dname pass output_dir"
-  [[ \$name ]] || { err \$usage; return 2; }
-  [[ \$dname ]] || { err \$usage; return 2; }
-  [[ \$pass ]] || { err \$usage; return 2; }
-  [[ \$output_dir ]] || { err \$usage; return 2; }
-
-  [ -d \$output_dir ] || mkdir -p \$output_dir
-  cd \$output_dir
-  [ -f \${ca}/certs/\${name}.crt ] && { err "Cert with name \$name already exist"; return 2; }
-  [ -d \$name ] && { err "Directory with name \$name already exist"; return 2; }
-
-  mkdir \$name && cd \$name
-  log=\$(mktemp)
-  _keytool \$ca \$name \$dname \$pass > \$log 2>&1
-  rc=\$?
-  [ \$rc -eq 0 ] || { cat \$log; }
-  rm \$log
-  return \$?
-}
-
-_keytool() {
-  local ca=\$1
-  local name=\$2
-  local dname=\$3
-  local pass=\$4
-  keytool -import  -noprompt -storepass \$pass -keystore keystore -alias root -trustcacerts -file \${ca}/ca.crt || return 2
-  keytool -genkey  -noprompt -storepass \$pass -keystore keystore -alias \$name -keyalg RSA -dname CN=client1,\${dname} -keysize 2048 || return 2
-  keytool -certreq -noprompt -storepass \$pass -keystore keystore -alias \$name -file \${ca}/sign_request/\${name}.csr && \${ca}/signcert || return 2
-  keytool -exportcert        -storepass \$pass -keystore keystore -alias \$name -file key || return 2
-  cp \${ca}/certs/\${name}.crt cert || return 2
-  keytool -import  -noprompt -storepass \$pass -keystore keystore -alias \$name -trustcacerts -file cert || return 2
-}
-
-err() { echo "\$@" 1>&2; }
-main \$@
 EOF
 }
 
