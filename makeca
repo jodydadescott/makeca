@@ -219,6 +219,7 @@ echo_makecert(){
 	  mv csr \${ca}/sign_request/\${DIR_CN}.csr || { err "Unable to move csr to \${ca}/sign_request"; return 2; }
 	  \${ca}/signcert || { err "Unable so sign request"; return 2; }
 	  cp \${ca}/certs/\${DIR_CN}.crt crt || { err "Unable to copy file \${ca}/certs/\${DIR_CN}.crt"; return 2; }
+	  echo \$pass > secret || { err "Unable to write secret"; return 2; }
 	  openssl pkcs12 -export -in crt -inkey key -out p12 -passout pass:\${pass}
 	  which keytool > /dev/null 2>&1 || { err "keytool not found, keystore will not be created"; return 0; }
 	  keytool -import  -noprompt -storepass \$pass -keystore keystore -alias root -trustcacerts -file ca.crt ||
