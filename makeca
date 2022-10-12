@@ -60,127 +60,128 @@ function main() {
 	# openssl x509 -subject -noout -in store/ca.crt
 }
 
-function echo_ca_cnf() {
-	cat <<-EOF
-	HOME			= .
-	RANDFILE		= \$ENV::HOME/.rnd
-	oid_section		= new_oids
+function echo_ca_cnf()
+{
+cat <<EOF
+HOME			= .
+RANDFILE		= \$ENV::HOME/.rnd
+oid_section		= new_oids
 
-	[ new_oids ]
+[ new_oids ]
 
-	[ ca ]
-	default_ca	= CA_default
+[ ca ]
+default_ca	= CA_default
 
-	[ CA_default ]
-	dir		= \$HOME
-	certs		= \$dir/certs
-	crl_dir		= \$dir/crl
-	database	= \$dir/index
-	unique_subject	= no
-	new_certs_dir	= \$dir/newcerts
-	certificate	= \$dir/ca.crt
-	serial		= \$dir/serial
-	crlnumber	= \$dir/crlnumber
-	crl		= \$dir/crl.pem
-	private_key	= \$dir/ca.pem
-	RANDFILE	= \$dir/.rand
-	x509_extensions	= usr_cert
-	name_opt 	= ca_default
-	cert_opt 	= ca_default
-	default_days	= 36500	
-	default_crl_days= 30
-	default_md	= sha1
-	preserve	= no
-	policy		= policy_match
+[ CA_default ]
+dir		= \$HOME
+certs		= \$dir/certs
+crl_dir		= \$dir/crl
+database	= \$dir/index
+unique_subject	= no
+new_certs_dir	= \$dir/newcerts
+certificate	= \$dir/ca.crt
+serial		= \$dir/serial
+crlnumber	= \$dir/crlnumber
+crl		= \$dir/crl.pem
+private_key	= \$dir/ca.pem
+RANDFILE	= \$dir/.rand
+x509_extensions	= usr_cert
+name_opt 	= ca_default
+cert_opt 	= ca_default
+default_days	= 36500	
+default_crl_days= 30
+default_md	= sha1
+preserve	= no
+policy		= policy_match
 
-	[ policy_match ]
-	countryName		= optional
-	stateOrProvinceName	= optional
-	organizationName	= optional
-	organizationalUnitName	= optional
-	commonName		= supplied
-	emailAddress	= optional
+[ policy_match ]
+countryName		= optional
+stateOrProvinceName	= optional
+organizationName	= optional
+organizationalUnitName	= optional
+commonName		= supplied
+emailAddress	= optional
 
-	[ policy_anything ]
-	countryName		= optional
-	stateOrProvinceName	= optional
-	localityName		= optional
-	organizationName	= optional
-	organizationalUnitName	= optional
-	commonName		= supplied
-	emailAddress		= optional
+[ policy_anything ]
+countryName		= optional
+stateOrProvinceName	= optional
+localityName		= optional
+organizationName	= optional
+organizationalUnitName	= optional
+commonName		= supplied
+emailAddress		= optional
 
-	[ req ]
-	default_bits		= 1024
-	default_keyfile 	= privkey.pem
-	distinguished_name	= req_distinguished_name
-	attributes		= req_attributes
-	x509_extensions	= v3_ca
-	# input_password = notasecret
-	# output_password = notasecret
+[ req ]
+default_bits		= 1024
+default_keyfile 	= privkey.pem
+distinguished_name	= req_distinguished_name
+attributes		= req_attributes
+x509_extensions	= v3_ca
+# input_password = notasecret
+# output_password = notasecret
 
-	string_mask = nombstr
+string_mask = nombstr
 
-	[ req_distinguished_name ]
-	countryName			= Country Name (2 letter code)
-	countryName_default		= US
-	countryName_min			= 2
-	countryName_max			= 2
+[ req_distinguished_name ]
+countryName			= Country Name (2 letter code)
+countryName_default		= US
+countryName_min			= 2
+countryName_max			= 2
 
-	stateOrProvinceName		= State or Province Name (full name)
-	stateOrProvinceName_default	= CO
+stateOrProvinceName		= State or Province Name (full name)
+stateOrProvinceName_default	= CO
 
-	0.organizationName		= Organization Name (eg, company)
-	0.organizationName_default	= Acme
+0.organizationName		= Organization Name (eg, company)
+0.organizationName_default	= Acme
 
-	organizationalUnitName		= Organizational Unit Name (eg, section)
-	organizationalUnitName_default	= Widgets
+organizationalUnitName		= Organizational Unit Name (eg, section)
+organizationalUnitName_default	= Widgets
 
-	commonName			= Common Name (e.g. server FQDN or YOUR name)
-	commonName_max			= 64
-	commonName_default = root
+commonName			= Common Name (e.g. server FQDN or YOUR name)
+commonName_max			= 64
+commonName_default = root
 
-	emailAddress			= Email Address
-	emailAddress_max		= 64
-	emailAddress_default		= $EMAIL
+emailAddress			= Email Address
+emailAddress_max		= 64
+emailAddress_default		= $EMAIL
 
-	[ req_attributes ]
-	challengePassword		= A challenge password
-	challengePassword_min		= 4
-	challengePassword_max		= 20
+[ req_attributes ]
+challengePassword		= A challenge password
+challengePassword_min		= 4
+challengePassword_max		= 20
 
-	unstructuredName		= An optional company name
+unstructuredName		= An optional company name
 
-	[ usr_cert ]
+[ usr_cert ]
 
-	basicConstraints=CA:FALSE
+basicConstraints=CA:FALSE
 
-	nsComment			= "Not Production"
+nsComment			= "Not Production"
 
-	subjectKeyIdentifier=hash
-	authorityKeyIdentifier=keyid,issuer
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer
 
-	[ v3_req ]
-	basicConstraints = CA:FALSE
-	keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+[ v3_req ]
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
 
-	[ v3_ca ]
-	subjectKeyIdentifier=hash
-	authorityKeyIdentifier=keyid:always,issuer:always
-	basicConstraints = CA:true
+[ v3_ca ]
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid:always,issuer:always
+basicConstraints = CA:true
 
-	[ crl_ext ]
+[ crl_ext ]
 
-	authorityKeyIdentifier=keyid:always,issuer:always
+authorityKeyIdentifier=keyid:always,issuer:always
 
-	[ proxy_cert_ext ]
-	basicConstraints=CA:FALSE
+[ proxy_cert_ext ]
+basicConstraints=CA:FALSE
 
-	nsComment			= "Not Production"
-	subjectKeyIdentifier=hash
-	authorityKeyIdentifier=keyid,issuer:always
-	proxyCertInfo=critical,language:id-ppl-anyLanguage,pathlen:3,policy:foo
-	EOF
+nsComment			= "Not Production"
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer:always
+proxyCertInfo=critical,language:id-ppl-anyLanguage,pathlen:3,policy:foo
+EOF
 }
 
 function echo_signcert()
