@@ -4,6 +4,9 @@ EMAIL="$(whoami)@local.dev"
 USAGE="Usage:$0 store_dir type (rsa, ec)"
 
 function main() {
+
+  this_script=$(<"$0")
+
 	store=$1
   ktype=$2
 	[[ "$store" ]] || { err "$USAGE"; return 2; }
@@ -34,6 +37,7 @@ function main() {
 	chmod 0400 passphrase || return 3
 	touch index || return 3
 	echo 200000 > serial || return 3
+  echo "$this_script" > store_build
 
   case "$ktypec" in
     RSA) echo darwin || return $? ;;
@@ -309,6 +313,8 @@ EOF
 function echo_readme() {
 cat <<EOF
 # Readme
+#
+# The script that built this store can be found in the file store_build
 #
 # cn=name is required. If you specify ST, OU, or C it will be used. If not then the defaults
 # will be used.
