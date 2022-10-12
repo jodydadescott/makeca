@@ -1,39 +1,66 @@
-#!/bin/sh
+#!/bin/bash
 
 EMAIL="$(whoami)@local.dev"
+USAGE="Usage:$0 store_dir type (rsa, ec)"
 
-main() {
-	usage="Usage:$0 store_dir"
+function main() {
 	store=$1
-	[[ $store ]] || { err $usage; return 2; }
-	[ -d $store ] && { err "Directory $store already exist; aborting"; return 2; }
-	[ -f $store ] && { err "File $store already exist; aborting"; return 2; }
-	mkdir -p $store || return 3
-	cd $store || return 3
+  ktype=$2
+	[[ "$store" ]] || { err "$USAGE"; return 2; }
+  [[ "$ktype" ]] || { err "$USAGE :: missing type (rsa, ec)"; return 2; }
+  [ -d "$store" ] && { err "Directory $store already exist; aborting"; return 2; }
+	[ -f "$store" ] && { err "File $store already exist; aborting"; return 2; }
+
+  ktypec="$(echo "$ktype" | tr '[:lower:]' '[:upper:]')"
+  case "$ktypec" in
+    RSA) err "Keytype is RSA" ;;
+    EC) err "Keytype is EC" ;;
+    *) err "Invalid keytype $ktype"; return 2; ;;
+  esac
+
+	mkdir -p "$store" || return 3
+	cd "$store" || return 3
 	touch ca || return 3
 	echo_ca_cnf > ca.cnf || return 3
+
 	echo_signcert > signcert || return 3
-	echo_makecert > makecert || return 3
-	chmod +x signcert makecert || return 3
+	echo_make_rsa_cert > make-rsa-cert || return 3
+	echo_make_ec_cert  > make-ec-cert || return 3
+  echo_readme > README || return 3
+
+	chmod +x signcert make-rsa-cert make-ec-cert || return 3
 	mkdir -p certs sign_request newcerts || return 3
 	openssl rand -base64 32 > passphrase || return 3
 	chmod 0400 passphrase || return 3
 	touch index || return 3
 	echo 200000 > serial || return 3
-	# Generate private key
-	openssl genrsa -passout file:passphrase -des3 -out ca.pem 2048 || return 3
+
+  case "$ktypec" in
+    RSA) echo darwin || return $? ;;
+    EC) echo linux || return $? ;;
+  esac
+
+  [[ "$ktypec" == "RSA" ]] && {
+	  openssl genrsa -passout file:passphrase -des3 -out ca.pem 2048 || return 3
+	  openssl rsa -passin file:passphrase -in ca.pem -pubout > ca_pub.pem || return 3
+  }
+
+  [[ "$ktypec" == "EC" ]] && {
+    openssl ecparam -name prime256v1 -genkey -noout -out ca.pem || return 3
+    openssl ec -in ca.pem -pubout -out ca_pub.pem || return 3
+  }
+
 	chmod 0400 ca.pem || return 3
-	# Extract Public Key
-	openssl rsa -passin file:passphrase -in ca.pem -pubout > ca_pub.pem || return 3
+
 	# Generate root certificate
-	local subject="/CN=\${DIR_CN}/OU=\${DIR_OU}/O=\${DIR_O}/ST=\${DIR_ST}/C=\${DIR_C}"
+	# local subject="/CN=\${DIR_CN}/OU=\${DIR_OU}/O=\${DIR_O}/ST=\${DIR_ST}/C=\${DIR_C}"
 	openssl req -passin file:passphrase -x509 -new -nodes -key ca.pem -sha256 -days 36500 -out ca.crt -config ca.cnf || return 3
 	err "Store $store created"
 
 	# openssl x509 -subject -noout -in store/ca.crt
 }
 
-echo_ca_cnf() {
+function echo_ca_cnf() {
 	cat <<-EOF
 	HOME			= .
 	RANDFILE		= \$ENV::HOME/.rnd
@@ -101,10 +128,10 @@ echo_ca_cnf() {
 	countryName_max			= 2
 
 	stateOrProvinceName		= State or Province Name (full name)
-	stateOrProvinceName_default	= TX
+	stateOrProvinceName_default	= CO
 
 	0.organizationName		= Organization Name (eg, company)
-	0.organizationName_default	= TechBros
+	0.organizationName_default	= Acme
 
 	organizationalUnitName		= Organizational Unit Name (eg, section)
 	organizationalUnitName_default	= Widgets
@@ -156,102 +183,139 @@ echo_ca_cnf() {
 	EOF
 }
 
-echo_signcert() {
-	cat <<-'EOF'
-	#!/bin/sh
-	# openssl req -in jody.req -noout -text
-	main() {
-	  cd $(dirname $0)
-	  counter=0
-	  mkdir -p sign_request
-	  mkdir -p newcerts
-	  err "Processing certs"
-	  for cert in $(/bin/ls -1 sign_request); do
-	    basecert=$(echo $cert | rev | cut -f 2- -d '.' | rev)
-	    err "Processing $cert"
-	    [ -f certs/${basecert}.crt ] && { err "Existing cert with name $cert; ignoring"; continue; }
-	    tmp=$(mktemp)
-	    openssl ca -config ca.cnf -passin file:passphrase -batch -out $tmp -infiles sign_request/$cert ||
-	      { err "Failed to sign cert $cert"; rm $tmp;  continue; }
-	    let counter=counter+1
-	    mv $tmp certs/${basecert}.crt
-	    rm sign_request/$cert
-	    err "Signed cert ${basecert}"
-	  done    
-	  err "Signed $counter certs"
-	}
-	err() { echo "$@" 1>&2; }
-	main $@
-	EOF
+function echo_signcert()
+{
+cat <<'EOF'
+#!/bin/sh
+main() {
+  cd $(dirname $0)
+	 counter=0
+	 mkdir -p sign_request
+	 mkdir -p newcerts
+	 err "Processing certs"
+	 for cert in $(/bin/ls -1 sign_request); do
+	   basecert=$(echo $cert | rev | cut -f 2- -d '.' | rev)
+	   err "Processing $cert"
+	   [ -f certs/${basecert}.crt ] && { err "Existing cert with name $cert; ignoring"; continue; }
+	   tmp=$(mktemp)
+	   openssl ca -config ca.cnf -passin file:passphrase -batch -out $tmp -infiles sign_request/$cert ||
+	     { err "Failed to sign cert $cert"; rm $tmp;  continue; }
+	   let counter=counter+1
+	   mv $tmp certs/${basecert}.crt
+	   rm sign_request/$cert
+	   err "Signed cert ${basecert}"
+	 done    
+	 err "Signed $counter certs"
+}
+err() { echo "$@" 1>&2; }
+main $@
+EOF
 }
 
-echo_makecert(){
-	cat <<-EOF
-	#!/bin/bash
+function echo_make_rsa_cert()
+{
+echo_cert_header
+cat <<EOF
 
-	main() {
-	  which openssl > /dev/null 2>&1 || { err "Unable to find openssl in path"; return 2; }
-	  local dname=\$1
-	  local pass=\$2
-	  local output_dir=\$3
+  openssl genrsa -out key 2048 || return 2
 
-	  pushd \$(dirname \$0) > /dev/null 2>&2
-	  ca=\$PWD
-	  popd > /dev/null 2>&1
-	  local usage="Usage \$0 dname pass output_dir"
-	  [[ \$dname ]] || { err \$usage; return 2; }
-	  _parse_dname \$(openssl x509 -subject -noout -in \${ca}/ca.crt)
-	  unset DIR_CN
-	  _parse_dname \$dname
-	  [[ \$DIR_CN ]] || { err "CN=name is required"; return 2; }
-	  [[ \$pass ]] || { err \$usage; return 2; }
-	  [[ \$output_dir ]] || { err \$usage; return 2; }
-	  [ -d \$output_dir ] || mkdir -p \$output_dir
-	  cd \$output_dir
-	  [ -f \${ca}/certs/\${DIR_CN}.crt ] && { err "Cert with name \$DIR_CN already exist"; return 2; }
-	  [ -d \$DIR_CN ] && { err "Directory with $\DIR_CN \$DIR_CN already exist"; return 2; }
-	  mkdir \$DIR_CN || { err "Unable to create directory \$DIR_CN"; return 2; }
-	  cd \$DIR_CN 
-	  cp \${ca}/ca.crt . || { err "Unable to copy file \${ca}/ca.crt"; return 2; }
-	  openssl genrsa -out key 2048 || { err "Unable to generate key"; return 2; }
-	  local subject="/CN=\${DIR_CN}/OU=\${DIR_OU}/O=\${DIR_O}/ST=\${DIR_ST}/C=\${DIR_C}"
-	  openssl req -new -key key -out csr -subj \$subject -passin pass:\${pass} || { err "Unable to create request"; return 2; }
-	  mv csr \${ca}/sign_request/\${DIR_CN}.csr || { err "Unable to move csr to \${ca}/sign_request"; return 2; }
-	  \${ca}/signcert || { err "Unable so sign request"; return 2; }
-	  cp \${ca}/certs/\${DIR_CN}.crt crt || { err "Unable to copy file \${ca}/certs/\${DIR_CN}.crt"; return 2; }
-	  echo \$pass > secret || { err "Unable to write secret"; return 2; }
-	  openssl pkcs12 -export -in crt -inkey key -out p12 -passout pass:\${pass}
-	  which keytool > /dev/null 2>&1 || { err "keytool not found, keystore will not be created"; return 0; }
-	  keytool -import  -noprompt -storepass \$pass -keystore keystore -alias root -trustcacerts -file ca.crt ||
-	    { err "keystore creation/importation of ca.crt failed"; return 2; }
-	  keytool -importkeystore -deststorepass \$pass -destkeystore keystore -srckeystore p12 -srcstorepass \$pass -srcstoretype PKCS12 ||
-	    { err "keystore importation of pkcs12 failed"; return 2; }
-	}
+EOF
+echo_cert_footer
+}
 
-	_parse_dname() {
-	  _parse() {
-	    key=\$(echo \$i | cut -d'=' -f1 | tr '[:lower:]' '[:upper:]')
-	    value=\$(echo \$i | cut -d'=' -f2)
-	    [[ "\$key" == "CN" ]] && DIR_CN=\$value
-	    [[ "\$key" == "cn" ]] && DIR_CN=\$value
-	    [[ "\$key" == "OU" ]] && DIR_OU=\$value
-	    [[ "\$key" == "O" ]] && DIR_O=\$value
-	    [[ "\$key" == "ST" ]] && DIR_ST=\$value
-	    [[ "\$key" == "C" ]] && DIR_C=\$value
-	  }
-	  for i in \${@//\// }; do
-	    _parse
-	  done
-	  for i in \${@//,/ }; do
-	    _parse
-	  done
-	}
+function echo_make_ec_cert()
+{
+echo_cert_header
+cat <<EOF
 
-	err() { echo "\$@" 1>&2; }
-	main \$@
-	EOF
+  openssl ecparam -name prime256v1 -genkey -noout -out key || return 2
+
+EOF
+echo_cert_footer
+}
+
+function echo_cert_header()
+{
+cat <<'EOF'
+#!/bin/bash
+main() {
+  which openssl > /dev/null 2>&1 || { err "Unable to find openssl in path"; return 2; }
+  local dname=$1
+
+  cd "$(dirname "$0")" || return 2
+  ca=$PWD
+  local usage="Usage $0 dname"
+  [[ $dname ]] || { err "$usage"; return 2; }
+  _parse_dname "$(openssl x509 -subject -noout -in "${ca}"/ca.crt)"
+  unset DIR_CN
+  _parse_dname "$dname"
+  [[ $DIR_CN ]] || { err "CN=name is required"; return 2; }
+
+  cert_name="${DIR_CN}-${DIR_OU}-${DIR_O}-${DIR_ST}-${DIR_C}"
+  [ -d "$cert_name" ] && { err "Directory $cert_name already exist"; return 2; }
+  mkdir -p database || return 2
+  cd database || return 2
+  mkdir -p "$cert_name" || return 2
+  cd "$cert_name" || return 2
+
+  pass="$(openssl rand -base64 6 | base64 | sed 's/=//g')"
+  echo "$pass" > secret || return 2
+  chmod 400 secret || return 2
+  cp "${ca}"/ca.crt . || return 2
+EOF
+}
+
+function echo_cert_footer() {
+cat <<'EOF'
+  subject="/CN=${DIR_CN}/OU=${DIR_OU}/O=${DIR_O}/ST=${DIR_ST}/C=${DIR_C}"
+	openssl req -new -key key -out csr -subj "$subject" -passin pass:"${pass}" || return 2
+  mv csr "${ca}/sign_request/${cert_name}".csr || return 2
+  "${ca}"/signcert || return 2
+  cp "${ca}"/certs/"${cert_name}".crt crt || return 2
+  openssl pkcs12 -export -in crt -inkey key -out p12 -passout pass:"${pass}"
+  which keytool > /dev/null 2>&1 || { err "keytool not found, keystore will not be created"; return 0; }
+  keytool -import  -noprompt -storepass "$pass" -keystore keystore -alias root -trustcacerts -file ca.crt || return 2
+  keytool -importkeystore -deststorepass "$pass" -destkeystore keystore -srckeystore p12 -srcstorepass "$pass" -srcstoretype PKCS12 || return 2
+}
+
+_parse_dname() {
+  _parse() {
+    key=$(echo "$i" | cut -d'=' -f1 | tr '[:lower:]' '[:upper:]')
+    value=$(echo "$i" | cut -d'=' -f2)
+    [[ "$key" == "CN" ]] && DIR_CN=$value
+    [[ "$key" == "cn" ]] && DIR_CN=$value
+    [[ "$key" == "OU" ]] && DIR_OU=$value
+    [[ "$key" == "O" ]] && DIR_O=$value
+    [[ "$key" == "ST" ]] && DIR_ST=$value
+    [[ "$key" == "C" ]] && DIR_C=$value
+  }
+  for i in ${@//\// }; do
+    _parse
+  done
+  for i in ${@//,/ }; do
+    _parse
+  done
 }
 
 err() { echo "$@" 1>&2; }
-
 main $@
+EOF
+}
+
+function echo_readme() {
+cat <<EOF
+# Readme
+#
+# cn=name is required. If you specify ST, OU, or C it will be used. If not then the defaults
+# will be used.
+
+make-rsa-cert cn=poppy # Make an RSA cert with ST, OUT and C defaults
+make-rsa-cert cn=poppy,st=co,ou=widgets,c=us # Make an RSA cert with custom attributes
+
+make-ec-cert daisy
+EOF
+}
+
+function err() { echo "$@" 1>&2; }
+
+main "$@"
