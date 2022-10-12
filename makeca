@@ -273,6 +273,9 @@ cat <<'EOF'
   "${ca}"/signcert || return 2
   cp "${ca}"/certs/"${cert_name}".crt crt || return 2
   openssl pkcs12 -export -in crt -inkey key -out p12 -passout pass:"${pass}"
+
+  openssl x509 -inform PEM -in crt -out pem
+
   which keytool > /dev/null 2>&1 || { err "keytool not found, keystore will not be created"; return 0; }
   keytool -import  -noprompt -storepass "$pass" -keystore keystore -alias root -trustcacerts -file ca.crt || return 2
   keytool -importkeystore -deststorepass "$pass" -destkeystore keystore -srckeystore p12 -srcstorepass "$pass" -srcstoretype PKCS12 || return 2
